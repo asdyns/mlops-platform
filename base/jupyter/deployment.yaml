@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter
+  namespace: mlops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter
+  template:
+    metadata:
+      labels:
+        app: jupyter
+    spec:
+      containers:
+      - name: notebook
+        image: jupyter/minimal-notebook:latest
+        ports:
+        - containerPort: 8888
+        env:
+        - name: JUPYTER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: platform-secrets
+              key: JUPYTER_TOKEN
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: notebook-storage
+          mountPath: /home/jovyan/work
+      volumes:
+      - name: notebook-storage
+        persistentVolumeClaim:
+          claimName: jupyter-pvc
