@@ -1,7 +1,11 @@
 # Architecture
 
 All components run in the `mlops` Kubernetes namespace, deployed via Kustomize
-from `base/`.
+from `base/`. `base/` itself is cloud-agnostic: the `local-path-retain`
+StorageClass and `ingressClassName: traefik` shown below are not defined in
+`base/` — they're supplied by the `overlays/local` overlay via a Kustomize
+patch, so the same `base/` can later be paired with an `overlays/eks/` that
+patches in `gp3`/`alb` instead.
 
 ```mermaid
 flowchart LR
@@ -35,7 +39,7 @@ flowchart LR
         dashSvc["dashboard-service\nClusterIP 80"]
         dashCm["ConfigMap\ndashboard-html\n(generated from index.html)"]
 
-        sc["StorageClass\nlocal-path-retain"]
+        sc["StorageClass\nlocal-path-retain\n(from overlays/local)"]
 
         cm["ConfigMap\nplatform-config\n(config/.env.config)"]
         sec["Secret\nplatform-secrets\n(secrets/.env.secrets)"]
@@ -89,12 +93,16 @@ flowchart LR
   and writes artifacts (models, files) to **MinIO** over the S3 API.
 - All stateful components (`jupyter`, `mlflow-db`, `minio`) mount PVCs backed
   by the `local-path-retain` StorageClass, so data survives pod restarts.
+  `storageClassName` isn't set on the PVCs in `base/` — it's patched in by
+  `overlays/local` (see note above), keeping the PVC definitions portable.
 - Everything user-facing sits behind a Traefik `Ingress` on a `*.local`
   hostname (`mlops.local`, `jupyter.local`, `mlflow.local`,
   `minio.local`/`minio-console.local`); the Services themselves are
   `ClusterIP`-only, same as the internal-only `mlflow-db`. `NodePort` is
   commented out in each `service.yaml` rather than removed, in case ingress
-  needs to be bypassed.
+  needs to be bypassed. `ingressClassName: traefik` is likewise patched in by
+  `overlays/local` for most Ingresses (`dashboard-ingress` currently still
+  hardcodes it in `base/` — a known inconsistency, see README known gaps).
 - Non-sensitive settings (DB name, MinIO endpoint URL, TLS flag, `PYTHONPATH`)
   come from the `platform-config` ConfigMap; credentials (Postgres user/pass,
   MinIO root user/pass, Jupyter token) come from the `platform-secrets`

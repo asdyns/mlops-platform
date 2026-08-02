@@ -4,7 +4,6 @@ metadata:
   name: minio-ingress
   namespace: mlops
 spec:
-  ingressClassName: traefik
   rules:
   - host: minio.local
     http:

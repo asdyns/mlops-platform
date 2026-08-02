@@ -3,12 +3,10 @@ kind: Kustomization
 namespace: mlops
 resources:
   - namespace
-  - storage
   - mlflow-db
   - mlflow
   - minio
   - jupyter
-  - ingress
   - dashboard
 secretGenerator:
   - name: platform-secrets
