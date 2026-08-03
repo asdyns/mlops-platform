@@ -1,2 +1,3 @@
 base/secrets/.env.secrets
 .local
+.local-terra
