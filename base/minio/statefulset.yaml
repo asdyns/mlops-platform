@@ -14,6 +14,7 @@ spec:
       labels:
         app: minio
     spec:
+      serviceAccountName: minio
       containers:
       - name: minio
         image: minio/minio:latest

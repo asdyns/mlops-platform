@@ -5,4 +5,5 @@ resources:
   - statefulset.yaml
   - service.yaml
   - pvc.yaml
+  - serviceaccount.yaml
 

@@ -13,6 +13,7 @@ spec:
       labels:
         app: mlflow-tracking
     spec:
+      serviceAccountName: mlflow
       initContainers:
       - name: install-drivers
         image: python:3.10-slim

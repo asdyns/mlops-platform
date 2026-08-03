@@ -13,6 +13,7 @@ spec:
       labels:
         app: jupyter
     spec:
+      serviceAccountName: jupyter
       containers:
       - name: notebook
         image: jupyter/minimal-notebook:latest

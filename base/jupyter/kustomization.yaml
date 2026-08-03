@@ -6,4 +6,7 @@ resources:
   - service.yaml
   - ingress.yaml
   - pvc.yaml
+  - serviceaccount.yaml
+  - role.yaml
+  - rolebinding.yaml
 

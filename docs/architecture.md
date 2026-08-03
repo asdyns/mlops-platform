@@ -110,3 +110,9 @@ flowchart LR
   `base/secrets/.env.secrets`, and injected into containers via
   `configMapKeyRef`/`secretKeyRef` — no plaintext values live in the
   Deployment/StatefulSet specs.
+- Not shown in the diagram above (omitted to keep it focused on traffic/data
+  flow): every pod runs under its own dedicated `ServiceAccount` rather than
+  the namespace's `default`. Only `jupyter`'s has its token automounted, and
+  only `jupyter` has any RBAC grant at all — a namespace-scoped `Role`/
+  `RoleBinding` giving read-only access to `pods`. See the README's RBAC
+  section for the full rationale.

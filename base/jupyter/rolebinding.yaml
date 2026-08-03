@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jupyter-pod-reader-binding
+  namespace: mlops
+subjects:
+- kind: ServiceAccount
+  name: jupyter
+  namespace: mlops
+roleRef:
+  kind: Role
+  name: jupyter-pod-reader
+  apiGroup: rbac.authorization.k8s.io

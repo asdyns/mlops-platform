@@ -13,6 +13,7 @@ spec:
       labels:
         app: dashboard
     spec:
+      serviceAccountName: dashboard
       containers:
       - name: nginx
         image: nginx:alpine
