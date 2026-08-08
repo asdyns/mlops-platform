@@ -134,17 +134,12 @@ added to `/etc/hosts`. Check the two things below, in order:
   Migrating would require splitting each multi-resource patch file into one
   file per resource; deferred for now, living with the deprecation warning.
 - `overlays/eks/` is partially built: the StorageClass side (`ebs-gp3`, backed
-  by the EBS CSI driver) is done and was validated by deploying against a
-  throwaway `eksctl`-provisioned exploration cluster (since torn down). The
-  Ingress side is not started — it needs the AWS Load Balancer Controller
-  installed in-cluster first (EKS has no built-in Ingress controller, unlike
-  k3s's bundled Traefik), which isn't done yet.
-- `dashboard-ingress` still hardcodes `ingressClassName: traefik` directly in
-  `base/dashboard/ingress.yaml`, while the other three Ingresses get it via
-  the `overlays/local` patch. The overlay also carries a (currently redundant)
-  patch for `dashboard-ingress`. Inconsistent, harmless today, but should be
-  reconciled — either strip it from base like the others, or drop the
-  redundant patch — before building `overlays/eks/`.
+  by the EBS CSI driver) is done and confirmed working — `kubectl apply -k
+  overlays/eks/` was run against a throwaway `eksctl`-provisioned exploration
+  cluster, and all app PVCs bound to real dynamically-provisioned EBS
+  volumes. The Ingress side is not started — it needs the AWS Load Balancer
+  Controller installed in-cluster first (EKS has no built-in Ingress
+  controller, unlike k3s's bundled Traefik), which isn't done yet.
 - Container images are pinned inconsistently — MinIO and Jupyter use `latest`,
   while MLflow and Postgres are pinned to specific versions.
 - Ingress is HTTP-only (no TLS) and assumes a Traefik ingress controller is
