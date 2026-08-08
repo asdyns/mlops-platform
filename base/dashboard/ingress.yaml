@@ -4,7 +4,6 @@ metadata:
   name: dashboard-ingress
   namespace: mlops
 spec:
-  ingressClassName: traefik
   rules:
   - host: mlops.local
     http:
