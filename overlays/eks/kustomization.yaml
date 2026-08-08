@@ -3,3 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - storage/storageclass.yaml
+
+patchesStrategicMerge:
+  - storage/patch-storageclass.yaml
