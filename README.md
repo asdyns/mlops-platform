@@ -84,12 +84,15 @@ terraform plan
 terraform apply
 ```
 
-**Status:** in progress. VPC networking and the cluster IAM role are written;
-the `aws_eks_cluster` resource itself, node group, OIDC provider, IRSA, and
-access entries are not yet built. Applied resources are torn down
-(`terraform destroy`) between sessions to avoid idle cost (a NAT Gateway is
-the only thing here that isn't free) — the cluster isn't standing 24/7 the
-way the Kustomize side assumes.
+**Status:** in progress. VPC networking, both IAM roles (cluster + node), the
+EKS cluster itself, OIDC provider, node group, and access entries are all
+written and have been applied successfully at least once — confirmed
+end-to-end via nodes visible in the EKS console and cluster access working.
+The IRSA role for the EBS CSI driver is written but not yet applied, and the
+`aws_eks_addon` to actually install the driver isn't written yet. Applied
+resources are torn down (`terraform destroy`) between sessions to avoid idle
+cost (NAT Gateway, EC2 nodes, and the control plane are the cost drivers
+here) — the cluster isn't standing 24/7 the way the Kustomize side assumes.
 
 ## Deploying
 

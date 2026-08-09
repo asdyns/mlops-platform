@@ -26,3 +26,9 @@ variable "private_subnet_cidrs" {
         "ap-southeast-2b" = "10.0.20.0/24"
     }
 }
+
+variable "kubernetes_version" {
+    description = "Kubernetes version for EKS control plane"
+    type = string
+    default = "1.31"
+}
