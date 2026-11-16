@@ -1,5 +1,95 @@
 # Architecture
 
+## Target architecture
+The design is in [`platform-PRD.md`](platform-PRD.md). Tenants touch the platform only
+through the contract (§3): Secrets, Kustomize components, labels and policy files.
+
+```mermaid
+flowchart TB
+    ds(["Data scientist<br/>train CLI on laptop"])
+    client(["API client"])
+
+    subgraph platform["Platform namespaces"]
+        ing["Traefik ingress<br/>*.localtest.me"]
+        reg["Registry<br/>localhost:5001"]
+        mlflow["MLflow 3.x<br/>tracking + registry"]
+        pg[("Postgres<br/>mlflow + tenant DBs")]
+        minio[("MinIO<br/>mlflow + tenant buckets")]
+        redis[("Redis<br/>Feast online store")]
+        kserve["KServe controller<br/>runtime mlops-mlflow"]
+        obs["Prometheus · Grafana<br/>Loki · Alertmanager"]
+        kc["Keycloak"]
+        argo["ArgoCD"]
+        kyv["Kyverno"]
+    end
+
+    subgraph tenant["Tenant namespace, e.g. recsys (created by make tenant)"]
+        front["Tenant front API<br/>JWT, domain routes"]
+        isvc["InferenceService<br/>MLServer + pyfunc"]
+        sink["mlops-logsink"]
+        promote["mlops-promote Job"]
+        mon["mlops-monitor CronJob"]
+        batch["batch-inference Job"]
+        feastm["feast-materialize CronJob"]
+    end
+
+    ds -- "log runs, register @challenger" --> mlflow
+    mlflow --> pg
+    mlflow -- "proxied artifacts" --> minio
+    client --> ing --> front -- "V2 infer" --> isvc
+    front -. "JWKS" .-> kc
+    isvc -- "payload logger" --> sink --> pg
+    isvc -. "online features" .-> redis
+    feastm --> redis
+    promote -- "gate, move aliases" --> mlflow
+    promote -- "copy artifacts" --> minio
+    promote -- "patch storageUri" --> isvc
+    isvc -. "storage initializer" .-> minio
+    batch -. "same artifacts" .-> minio
+    mon -- "predictions ⋈ feedback" --> pg
+    kserve -. "reconciles" .-> isvc
+    obs -. "scrape, logs, alerts" .-> tenant
+    argo -. "sync from git" .-> tenant
+    kyv -. "admission policy" .-> tenant
+    reg -. "images" .-> tenant
+```
+
+### Model lifecycle
+```mermaid
+sequenceDiagram
+    autonumber
+    actor DS as Data scientist
+    participant ML as MLflow
+    participant PR as mlops-promote
+    participant S3 as MinIO (tenant bucket)
+    participant KS as KServe InferenceService
+    participant LS as mlops-logsink
+    participant MO as mlops-monitor
+    DS->>ML: train CLI logs run + tags, registers @challenger
+    DS->>PR: make promote (promotion.yaml)
+    PR->>ML: compare @challenger vs @champion (rules)
+    PR->>PR: checks: load_context, latency p95
+    alt gate fails
+        PR->>ML: tag reasons, exit non-zero
+    else gate passes
+        PR->>ML: @previous ← champion, @champion ← challenger
+        PR->>S3: copy version artifacts
+        PR->>KS: patch storageUri, wait Ready
+        alt not Ready
+            PR->>ML: revert aliases
+            PR->>KS: revert storageUri
+        end
+    end
+    KS-->>LS: request/response events
+    LS->>LS: write predictions / feedback
+    MO->>LS: daily: join predictions ⋈ feedback, drift + tenant metrics
+    MO-->>DS: Grafana panels, alerts → retrain → back to step 1
+```
+
+Phases and what each one builds: [`platform-PRD.md` §8](platform-PRD.md#8-phases).
+Work tracking: [project board](https://github.com/users/asdyns/projects/3).
+
+## Current state (v0, k3s)
 All components run in the `mlops` Kubernetes namespace, deployed via Kustomize
 from `base/`. `base/` itself is cloud-agnostic: the `local-path-retain`
 StorageClass and `ingressClassName: traefik` shown below are not defined in
@@ -79,7 +169,7 @@ flowchart LR
     sec -. "env" .-> jupC & mlfC & dbC & mioC
 ```
 
-## Flow
+### Flow
 
 - **Dashboard** is the entry point (`mlops.local`) — a static nginx page with
   links out to MLflow, Jupyter, and the MinIO console. Its HTML is generated
@@ -116,3 +206,44 @@ flowchart LR
   only `jupyter` has any RBAC grant at all — a namespace-scoped `Role`/
   `RoleBinding` giving read-only access to `pods`. See the README's RBAC
   section for the full rationale.
+
+### RBAC
+Every workload runs under its own dedicated `ServiceAccount` — none of them use
+the namespace's `default` ServiceAccount, which is intentionally left unbound
+so it can never become an accidental shared grant. `automountServiceAccountToken`
+is `false` on all of them except `jupyter`, since none of the others make calls
+to the Kubernetes API.
+
+`jupyter`'s ServiceAccount is bound (via a `Role` + `RoleBinding`, both scoped to
+the `mlops` namespace) to read-only access on `pods` — `get`/`list`/`watch` only,
+nothing else. This is deliberately minimal for now; a `Role` covering `batch/v1`
+Jobs will be added once notebooks start kicking off training runs as Kubernetes
+Jobs.
+
+This per-app ServiceAccount split isn't just isolation for its own sake — it
+maps directly onto AWS IRSA (IAM Roles for Service Accounts), which annotates
+individual ServiceAccounts to assume individual IAM roles. Keeping each
+workload on its own identity now means `overlays/eks/` can add IRSA annotations
+to existing ServiceAccounts rather than needing to first split workloads that
+share one.
+
+### k3s troubleshooting (v0)
+**Ingress returns 502 Bad Gateway on every `*.local` host.** Most likely your
+machine's IP has changed (DHCP lease renewal) since the `*.local` entries were
+added to `/etc/hosts`. Check the two things below, in order:
+
+1. Confirm Traefik's current address and match `/etc/hosts` to it:
+   ```
+   kubectl get svc -n kube-system traefik   # note the EXTERNAL-IP
+   ```
+   Update each `*.local` line in `/etc/hosts` to that IP.
+2. If ingress still 502s after that, the IP change may have also broken k3s's
+   internal pod-network routing (Traefik unable to reach the API server's
+   ClusterIP) — check `kubectl logs -n kube-system -l app.kubernetes.io/name=traefik`
+   for `no route to host` errors. Fix with a clean k3s restart (plain
+   `systemctl restart k3s` can leave orphaned `containerd-shim` processes behind):
+   ```
+   sudo /usr/local/bin/k3s-killall.sh
+   sudo systemctl start k3s
+   ```
+   Give it 30-60s, then recheck `kubectl get nodes` and `kubectl get pods -n mlops`.
