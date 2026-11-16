@@ -43,11 +43,56 @@ overlays/local/         k3s overlay: local-path-retain StorageClass + patches fo
 overlays/eks/           EKS overlay (partial): ebs-gp3 StorageClass + patch for
                          storageClassName. Ingress patch not yet written.
 docs/                   Architecture diagram and other documentation
+terraform-bootstrap/    One-off config creating the S3 bucket + DynamoDB table
+                         used as the Terraform remote state backend below.
+                         Local state, applied once, not touched again.
+terraform/              Hand-rolled Terraform build of the EKS cluster itself
+                         (see Provisioning EKS below) — separate from, and
+                         upstream of, the Kustomize manifests in base/overlays.
 ```
 
 Workloads consume `platform-config`/`platform-secrets` via `configMapKeyRef` /
 `secretKeyRef` — nothing is hardcoded in the Deployment/StatefulSet specs
 themselves.
+
+## Provisioning EKS (Terraform)
+
+`terraform/` hand-rolls the EKS cluster resource-by-resource (no
+`terraform-aws-modules/eks/aws`) as a learning exercise, rather than something
+`overlays/eks/` can deploy onto until this exists. It's split into a reusable
+module plus a per-environment root config, mirroring the Kustomize
+base/overlays split:
+
+```
+terraform/modules/eks-platform/   The actual resources — network.tf (VPC,
+                                   subnets, IGW, NAT Gateway, route tables),
+                                   iam.tf (cluster/node IAM roles), and more
+                                   as the build progresses. No provider or
+                                   backend block — inherits both from its caller.
+terraform/environments/dev/       Root config: backend "s3" {}, provider
+                                   config, and the module "eks_platform" block
+                                   that calls the above with real values.
+```
+
+State is remote (S3 + DynamoDB lock table), created once via
+`terraform-bootstrap/` and never touched again. To (re)build:
+
+```
+cd terraform/environments/dev
+terraform init
+terraform plan
+terraform apply
+```
+
+**Status:** in progress. VPC networking, both IAM roles (cluster + node), the
+EKS cluster itself, OIDC provider, node group, and access entries are all
+written and have been applied successfully at least once — confirmed
+end-to-end via nodes visible in the EKS console and cluster access working.
+The IRSA role for the EBS CSI driver is written but not yet applied, and the
+`aws_eks_addon` to actually install the driver isn't written yet. Applied
+resources are torn down (`terraform destroy`) between sessions to avoid idle
+cost (NAT Gateway, EC2 nodes, and the control plane are the cost drivers
+here) — the cluster isn't standing 24/7 the way the Kustomize side assumes.
 
 ## Deploying
 
@@ -140,6 +185,9 @@ added to `/etc/hosts`. Check the two things below, in order:
   volumes. The Ingress side is not started — it needs the AWS Load Balancer
   Controller installed in-cluster first (EKS has no built-in Ingress
   controller, unlike k3s's bundled Traefik), which isn't done yet.
+- The real EKS cluster to apply `overlays/eks/` against long-term doesn't
+  exist yet — see Provisioning EKS above. The `eksctl` cluster validated
+  against so far is throwaway/torn down, not the real infrastructure.
 - Container images are pinned inconsistently — MinIO and Jupyter use `latest`,
   while MLflow and Postgres are pinned to specific versions.
 - Ingress is HTTP-only (no TLS) and assumes a Traefik ingress controller is
