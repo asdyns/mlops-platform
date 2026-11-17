@@ -130,11 +130,11 @@ as untracked leftovers from that branch. Everything is pushed. Untracked session
 ## 5. Open decisions (resolve before P0)
 | Decision | Recommendation | Why |
 |---|---|---|
-| kind vs. k3s | **kind** | Disposable (recreate ~1 min). Ports map to localhost, so `*.localtest.me` survives DHCP changes. Cost: an `overlays/kind` (same `local-path` provisioner) plus an ingress controller. If switching, run `k3s-uninstall.sh` so servicelb can't grab 80/443 |
-| Ingress API | **Ingress + Traefik** (Helm) | Base Ingress objects already exist. The class patch maps to the AWS LB Controller on EKS. ingress-nginx is retired (Mar 2026). Gateway API/Envoy is a later revisit, and becomes required if Istio is adopted (Later, §9) or if the scale track (`scale-track.md`) starts, for Gateway API Inference Extension LLM routing |
-| Merge `feat/terraform-eks` → `main` | **Yes, first** | Don't branch new work off a stale `main` |
+| kind vs. k3s | **DECIDED 2026-11-17: kind** (k3s to be uninstalled via `k3s-uninstall.sh` before the kind cluster takes 80/443) | Disposable (recreate ~1 min). Ports map to localhost, so `*.localtest.me` survives DHCP changes. Cost: an `overlays/kind` (same `local-path` provisioner) plus an ingress controller. If switching, run `k3s-uninstall.sh` so servicelb can't grab 80/443 |
+| Ingress API | **DECIDED 2026-11-17: Ingress + Traefik** (Helm) | Base Ingress objects already exist. The class patch maps to the AWS LB Controller on EKS. ingress-nginx is retired (Mar 2026). Gateway API/Envoy is a later revisit, and becomes required if Istio is adopted (Later, §9) or if the scale track (`scale-track.md`) starts, for Gateway API Inference Extension LLM routing |
+| Merge `feat/terraform-eks` → `main` | **DONE** (PR #2, merged 2026-11-16) | Don't branch new work off a stale `main` |
 | Serving runtime | **DECIDED 2026-11-16: KServe** (RawDeployment, no Knative) | User's choice: the industry-standard serving layer. Costs: protocol-fixed routes (domain APIs need a tenant front service), a log sink to write, cert-manager + controller. Canary and scale-to-zero (serverless/Knative mode) stay deferred |
-| Jupyter in the local overlay | Optional | Tenants run notebooks on the host. Dropping it saves ~0.5–1 GB |
+| Jupyter in the local overlay | **DECIDED 2026-11-17: keep** | Kept in the local overlay (costs ~0.5–1 GB of RAM, see §7). Tenants can still run notebooks on the host |
 
 ## 6. Target design
 **Cluster:** kind `mlops`, single node, `extraPortMappings` 80/443, a kind-attached
