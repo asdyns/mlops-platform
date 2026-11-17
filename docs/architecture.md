@@ -89,6 +89,50 @@ sequenceDiagram
 Phases and what each one builds: [`platform-PRD.md` §8](platform-PRD.md#8-phases).
 Work tracking: [project board](https://github.com/users/asdyns/projects/3).
 
+## Local cluster layout (kind, #5)
+The local platform runs as a kind cluster. kind runs each Kubernetes node as a
+Docker container, so there are two networks to think about: the Docker host
+ports you reach from your laptop, and the Kubernetes network inside the node.
+A separate registry container holds the images you build locally.
+
+Ports:
+
+| Where | Port | Meaning |
+|---|---|---|
+| host `127.0.0.1:5001` | → `kind-registry:5000` | `docker push localhost:5001/...` from your shell |
+| host `:80` / `:443` | → node `:80` / `:443` | web traffic into the cluster (Traefik, #6) |
+| host random localhost port | → node `:6443` | Kubernetes API (`kubectl`), written to `~/.kube/config` |
+| `kind-registry:5000` | Docker network `kind` | how containerd on the node pulls images |
+
+```mermaid
+flowchart TB
+    user(["You / Browser"])
+    cli["docker push localhost:5001/x\n(your shell)"]
+
+    subgraph host["Host laptop"]
+        backups[("~/mlops-backups")]
+
+        subgraph dockerNet["Docker network: kind"]
+            reg["container kind-registry\nregistry:2.8.3\nlistens :5000\npublished 127.0.0.1:5001"]
+
+            subgraph node["container mlops-control-plane (kind node)\nKubernetes v1.34.11"]
+                hosts["containerd\n/etc/containerd/certs.d/localhost:5001/hosts.toml\nlocalhost:5001 → http://kind-registry:5000"]
+                api["kube-apiserver :6443"]
+                ing["Traefik :80 / :443\n(added in #6)"]
+                pods["Pods"]
+                nodeBackups[("/backups")]
+            end
+        end
+    end
+
+    cli -- "host :5001 → :5000" --> reg
+    user -- "host :80 / :443\n(Docker port mapping)" --> ing
+    ing --> pods
+    hosts -- "image pull over\nDocker network" --> reg
+    pods -. "image: localhost:5001/x" .-> hosts
+    backups <-- "bind mount\nextraMounts" --> nodeBackups
+```
+
 ## Current state (v0, k3s)
 All components run in the `mlops` Kubernetes namespace, deployed via Kustomize
 from `base/`. `base/` itself is cloud-agnostic: the `local-path-retain`
